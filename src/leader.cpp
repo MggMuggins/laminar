@@ -131,7 +131,7 @@ Leader::Leader(kj::AsyncIoContext &ioContext, kj::Filesystem &fs, const char *jo
 
     LSYSCALL(pipe(setEnvPipe));
     auto event = ioContext.lowLevelProvider->wrapInputFd(setEnvPipe[0], kj::LowLevelAsyncIoProvider::TAKE_OWNERSHIP);
-    auto buffer = kj::heapArrayBuilder<char>(1024);
+    auto buffer = kj::heapArrayBuilder<char>(1025);
     tasks.add(readEnvPipe(event, buffer.asPtr().begin()).attach(kj::mv(event), kj::mv(buffer)));
 }
 
