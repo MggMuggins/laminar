@@ -186,3 +186,25 @@ TEST_F(LaminarFixture, QueueFront) {
     EXPECT_STREQ("job_started", started2["type"].GetString());
     EXPECT_STREQ("foo", started2["data"]["name"].GetString());
 }
+
+// Regression test for issue 002: heap buffer overflow of one byte in
+// Leader::readEnvPipe. The leader reads `laminarc set` payloads into a fixed
+// buffer via stream->tryRead(buffer, 1, 1024). When a single read returns the
+// maximum 1024 bytes, the trailing NUL terminator is written at buffer[1024],
+// one byte past the end of the allocation. Feeding the setenv pipe a value
+// larger than 1024 bytes guarantees a read of exactly 1024 bytes, tripping the
+// off-by-one. Under AddressSanitizer the out-of-bounds write is detected and
+// the job aborts; with the bug fixed the job completes successfully.
+TEST_F(LaminarFixture, ReadEnvPipeHeapOverflow) {
+    // The leader exposes the write-end of the setenv pipe to job scripts via
+    // the __LAMINAR_SETENV_PIPE environment variable, so we can drive the
+    // real readEnvPipe code path directly without needing the laminarc binary.
+    // Generate a value (prefix "LONGVAR=" + 2000 'A's) that is larger than the
+    // 1024-byte read window, so the first read returns exactly 1024 bytes.
+    defineJob("envoverflow",
+        "value=$(head -c 2000 /dev/zero | tr '\\0' 'A')\n"
+        "printf 'LONGVAR=%s' \"$value\" >&\"$__LAMINAR_SETENV_PIPE\"\n"
+        "echo set-ok\n");
+    auto run = runJob("envoverflow");
+    ASSERT_EQ(LaminarCi::JobResult::SUCCESS, run.result);
+}
